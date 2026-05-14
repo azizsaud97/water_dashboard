@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>نظام إدارة العدادات الجغرافي | مرافق</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=IBM+Plex+Mono:wght@600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<style>
+:root {
+  --brand-blue: #004b79; --brand-orange: #f28e13; --bg: #f4f7f6; --card: #ffffff;
+  --border: #e2e8f0; --text: #2d3748; --dim: #718096;
+  --green: #38a169; --red: #e53e3e; --yellow: #d69e2e; --purple: #805ad5;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--text); font-family:'Cairo',sans-serif; height: 100vh; display:flex; flex-direction:column; overflow: hidden;}
+
+/* TOPBAR */
+.topbar { background:var(--card); border-bottom:2px solid var(--brand-blue); padding:10px 20px; display:flex; align-items:center; gap:20px; z-index: 1000; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+.logo { font-size:16px; font-weight:900; color:var(--brand-blue); }
+.logo span { color:var(--brand-orange); font-weight:700; font-size:12px; display:block; }
+
+.search-wrap { display:flex; align-items:center; gap:6px; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:6px 12px; min-width:250px; transition: 0.2s;}
+.search-wrap:focus-within { border-color: var(--brand-blue); box-shadow: 0 0 0 2px rgba(0,75,121,0.1); }
+.search-wrap input { background:none; border:none; outline:none; color:var(--text); font-family:'Cairo',sans-serif; font-size:12px; width:100%; text-align:right; }
+
+.kpi-row { display:flex; gap:10px; flex:1; justify-content:center; }
+.kpi { background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:8px 20px; text-align:center; min-width: 120px;}
+.kpi-label { font-size:11px; color:var(--dim); font-weight: 700;}
+.kpi-num { font-family:'IBM Plex Mono',monospace; font-size:22px; font-weight:700; color:var(--brand-blue);}
+.kpi-num.green { color:var(--green); } .kpi-num.red { color:var(--red); }
+
+/* Filter Tabs */
+.filter-group { display:flex; flex-direction:column; gap:3px; flex-shrink:0; }
+.filter-group label { font-size:10px; color:var(--dim); text-align:center; font-weight: 600;}
+.filter-radios { display:flex; gap:8px; align-items: center; }
+.frad { display:flex; align-items:center; gap:3px; cursor:pointer; }
+.frad input { display:none; }
+.frad-box { width:14px; height:14px; border-radius:50%; border:2px solid var(--border); display:flex; align-items:center; justify-content:center; transition:.15s; background: #fff;}
+.frad input:checked ~ .frad-box { border-color:var(--brand-orange); background:var(--brand-orange); }
+.frad input:checked ~ .frad-box::after { content:''; width:5px; height:5px; background:#fff; border-radius:50%; }
+.frad-lbl { font-size:11px; font-weight: 600;}
+
+.action-btns { display: flex; gap: 10px; }
+.btn { padding: 8px 15px; border-radius: 6px; font-family: 'Cairo'; font-size: 12px; font-weight: bold; cursor: pointer; border: none; transition: 0.2s; }
+.btn-export { background: var(--brand-blue); color: white; }
+.btn-export:hover { background: #003657; }
+.btn-reset { background: #fff; border: 1px solid var(--border); color: var(--text); }
+.btn-reset:hover { background: var(--bg); border-color: var(--dim); }
+
+/* MAIN GRID */
+.body-grid { display:grid; grid-template-columns: 280px 1fr 300px; flex:1; height: calc(100vh - 75px); }
+
+/* LEFT PANEL */
+.left-panel { background:var(--card); border-left:1px solid var(--border); padding:15px; overflow-y:auto; display: flex; flex-direction: column; gap: 20px;}
+.section-title { font-size:13px; color:var(--brand-blue); font-weight:900; border-bottom: 2px solid var(--bg); padding-bottom: 8px; margin-bottom: 10px; }
+.sector-item { padding: 10px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 8px; cursor: pointer; transition: 0.2s; display: flex; justify-content: space-between; align-items: center;}
+.sector-item:hover, .sector-item.active { background: var(--bg); border-color: var(--brand-blue); }
+.sector-name { font-weight: 700; font-size: 11px; color: var(--brand-blue); line-height: 1.4;}
+.sector-count { font-family: 'IBM Plex Mono'; font-size: 11px; background: var(--brand-orange); color: white; padding: 2px 6px; border-radius: 10px;}
+
+/* Mini Status Table in Left Panel */
+.mini-status-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.mini-status-table td { padding: 8px 5px; border-bottom: 1px solid var(--bg); }
+.mini-status-table tr:last-child td { border-bottom: none; }
+.st-dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-left: 6px; vertical-align: middle; }
+.st-count { font-family: 'IBM Plex Mono', monospace; font-weight: 700; font-size: 12px; }
+
+/* CENTER MAP */
+.map-area { position:relative; background:#e5e9ed; height: 100%;}
+#mainMap { width: 100%; height: 100%; z-index: 1;}
+
+/* RIGHT PANEL */
+.right-panel { background:var(--card); border-right:1px solid var(--border); padding:15px; overflow-y:auto; box-shadow: -5px 0 15px rgba(0,0,0,0.03); z-index: 2;}
+.empty-state { text-align: center; color: var(--dim); font-size: 13px; margin-top: 50px; line-height: 1.8;}
+.detail-card { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 15px; margin-bottom: 15px; }
+.d-row { display: flex; flex-direction: column; margin-bottom: 12px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 8px;}
+.d-row:last-child { border: none; margin-bottom: 0; padding-bottom: 0;}
+.d-label { font-size: 10px; color: var(--dim); font-weight: 700; text-transform: uppercase; margin-bottom: 2px;}
+.d-val { font-size: 13px; color: var(--brand-blue); font-weight: 700; font-family: 'IBM Plex Mono', 'Cairo';}
+.status-badge { display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: bold; color: white;}
+
+/* Close Button */
+.close-btn { background: rgba(229, 62, 62, 0.1); color: var(--red); border: 1px solid var(--red); padding: 3px 8px; border-radius: 4px; font-size: 10px; font-family: 'Cairo'; font-weight: bold; cursor: pointer; transition: 0.2s; }
+.close-btn:hover { background: var(--red); color: white; }
+
+/* Map Label Styles (Arabic) */
+.sector-label { background: rgba(255,255,255,0.95); border: 2px solid var(--brand-blue); border-radius: 6px; padding: 4px 8px; font-family: 'Cairo'; text-align: center; box-shadow: 0 4px 10px rgba(0,75,121,0.15); white-space: nowrap; line-height: 1.3;}
+.sector-label-title { color: var(--brand-blue); font-weight: 900; font-size: 13px; }
+.sector-label-sub { color: var(--brand-orange); font-weight: 700; font-size: 10px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">مرافق<span>الذكاء الجغرافي للعدادات</span></div>
+  
+  <div class="search-wrap">
+    <span style="color:var(--dim);font-size:12px">🔍</span>
+    <input type="text" id="searchInput" placeholder="ابحث برقم الحساب أو الجوال...">
+  </div>
+
+  <div class="kpi-row">
+    <div class="kpi"><div class="kpi-label">إجمالي العدادات</div><div class="kpi-num total" id="kpi-total">0</div></div>
+    <div class="kpi"><div class="kpi-label">نشط</div><div class="kpi-num green" id="kpi-active">0</div></div>
+    <div class="kpi"><div class="kpi-label">مفصول</div><div class="kpi-num red" id="kpi-disc">0</div></div>
+  </div>
+
+  <div class="filter-group">
+    <div class="filter-radios">
+      <label class="frad"><input type="radio" name="ztype" value="all" checked onchange="setZoneFilter(this.value)"><div class="frad-box"></div><span class="frad-lbl">الكل</span></label>
+      <label class="frad"><input type="radio" name="ztype" value="سكني" onchange="setZoneFilter(this.value)"><div class="frad-box"></div><span class="frad-lbl" style="color:var(--brand-blue)">سكني</span></label>
+      <label class="frad"><input type="radio" name="ztype" value="تجاري" onchange="setZoneFilter(this.value)"><div class="frad-box"></div><span class="frad-lbl" style="color:var(--brand-orange)">تجاري</span></label>
+      <label class="frad"><input type="radio" name="ztype" value="حكومي" onchange="setZoneFilter(this.value)"><div class="frad-box"></div><span class="frad-lbl" style="color:var(--purple)">حكومي</span></label>
+      <label class="frad"><input type="radio" name="ztype" value="صناعي" onchange="setZoneFilter(this.value)"><div class="frad-box"></div><span class="frad-lbl" style="color:var(--green)">صناعي</span></label>
+    </div>
+  </div>
+
+  <div class="action-btns">
+    <button class="btn btn-reset" onclick="resetView()">↺ إعادة ضبط</button>
+    <button class="btn btn-export" onclick="exportData()">📥 تحميل Excel</button>
+  </div>
+</div>
+
+<div class="body-grid">
+  <div class="left-panel">
+    <div>
+        <div class="section-title">الحي - المحلة</div>
+        <div id="sectorsList" style="max-height: 40vh; overflow-y: auto;">
+          <div style="text-align:center; color:var(--dim); font-size:12px; padding:20px;">جاري معالجة الإحداثيات...</div>
+        </div>
+    </div>
+    
+    <div>
+        <div class="section-title">الحالة والعدد</div>
+        <table class="mini-status-table" id="statusListTable">
+            </table>
+    </div>
+  </div>
+
+  <div class="map-area">
+    <div id="mainMap"></div>
+  </div>
+
+  <div class="right-panel">
+    <div class="section-title" style="display: flex; justify-content: space-between; align-items: center;">
+        معلومات المشترك
+        <button class="close-btn" id="closeDetailBtn" style="display:none;" onclick="resetView()">✖ إغلاق</button>
+    </div>
+    <div id="subscriberDetails">
+      <div class="empty-state">
+        <div style="font-size: 40px; margin-bottom: 10px;">📍</div>
+        اضغط على أي دبوس في الخريطة<br>لعرض تفاصيل العداد والمشترك هنا.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = "http://127.0.0.1:5000/api";
+let allData = [];
+let map = null;
+let markersLayer = L.layerGroup();
+let labelsLayer = L.layerGroup();
+let currentSector = 'all';
+let currentZoneType = 'all'; 
+
+const STATUS_COLORS = {
+    "نشط": "#38a169", "نشط غير موثق": "#d69e2e", "مفصول": "#e53e3e", 
+    "مفصول غير موثق": "#805ad5", "مفصول ويوجد صرف": "#f28e13"
+};
+
+// 🌟 القاموس العربي لأسماء الأحياء (من ورقة مرافق الرسمية)
+const DISTRICT_ARABIC = {
+    'A': 'جلمودة', 'B': 'الفناتير', 'C': 'الرقة', 'D': 'الدفي',
+    'E': 'مردومة', 'F': 'المطرفية', 'G': 'السروع', 'H': 'الفصل',
+    'M': 'الخليج', 'N': 'الحويلات', 'P': 'اللؤلؤ', 'Q': 'البحر',
+    'R': 'الشاطئ', 'S': 'ينبع الصناعية', 'T': 'مركز المدينة'
+};
+
+// 🌟 القاموس العربي لأسماء المحلات (من ورقة مرافق الرسمية)
+const SECTOR_ARABIC = {
+    'A1': 'الرياض', 'A2': 'طيبة', 'A3': 'الطائف', 'A4': 'العلا', 'A5': 'ينبع',
+    'B1': 'الحجاز', 'B2': 'مكة', 'B3': 'سدير', 'B4': 'نجد', 'B5': 'الأحساء', 'B6': 'دارين',
+    'D1': 'الأندلس', 'D2': 'القدس', 'D3': 'الفيحاء', 'D4': 'الفاروق', 'D5': 'الفردوس',
+    'F1': 'الريحان', 'F2': 'الخزامى', 'F3': 'الياسمين', 'F4': 'الربيع'
+};
+
+const SECTOR_COORDS = {
+  'A1': [27.085, 49.530], 'A2': [27.080, 49.540], 'A3': [27.075, 49.550], 'A4': [27.070, 49.535], 'A5': [27.090, 49.545],
+  'B1': [27.050, 49.630], 'B2': [27.045, 49.640], 'B3': [27.040, 49.645], 'B4': [27.035, 49.635], 'B5': [27.030, 49.625], 'B6': [27.070, 49.635],
+  'D1': [27.035, 49.570], 'D2': [27.030, 49.580], 'D3': [27.025, 49.590], 'D4': [27.020, 49.575], 'D5': [27.015, 49.585],
+  'F1': [26.985, 49.530], 'F2': [26.980, 49.540], 'F3': [26.975, 49.550], 'F4': [26.970, 49.535],
+  'M':  [27.010, 49.630], 'N':  [26.995, 49.620], 'P':  [26.985, 49.635], 'Q':  [26.975, 49.645], 'R':  [27.000, 49.660], 'S':  [26.950, 49.620], 'T':  [27.005, 49.610]
+};
+
+function initMap() {
+    map = L.map('mainMap').setView([27.025, 49.620], 12);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        attribution: '© OpenStreetMap & CARTO'
+    }).addTo(map);
+    markersLayer.addTo(map);
+    labelsLayer.addTo(map);
+}
+
+async function fetchData() {
+    try {
+        const res = await fetch(`${API}/data`);
+        allData = await res.json();
+        initMap();
+        processMapData();
+    } catch(e) {
+        alert("تأكد من تشغيل السيرفر وتعبئة ملف الإكسل.");
+    }
+}
+
+function processMapData() {
+    markersLayer.clearLayers();
+    labelsLayer.clearLayers();
+    
+    let sectors = {};
+    let activeCount = 0; let discCount = 0;
+    
+    let stats = {
+        "نشط": 0, "نشط غير موثق": 0, "مفصول غير موثق": 0, "مفصول ويوجد صرف": 0, "استهلاك صفري": 0
+    };
+
+    let dataToProcess = allData.filter(d => {
+        let matchSector = (currentSector === 'all' || d.sector === currentSector);
+        let matchZone = (currentZoneType === 'all' || d.zone_type === currentZoneType);
+        return matchSector && matchZone;
+    });
+
+    dataToProcess.forEach(d => {
+        if(d.status.includes("نشط")) activeCount++;
+        if(d.status.includes("مفصول")) discCount++;
+
+        if(stats[d.status] !== undefined) stats[d.status]++;
+        if(d.zero_consumption === "نعم") stats["استهلاك صفري"]++;
+
+        if(!sectors[d.sector]) sectors[d.sector] = { count: 0, district: d.district };
+        sectors[d.sector].count++;
+
+        if (currentSector !== 'all' || currentZoneType !== 'all') {
+            const color = STATUS_COLORS[d.status] || "#718096";
+            const markerHtml = `<div style="background:${color}; width:12px; height:12px; border-radius:50%; border:2px solid #fff; box-shadow:0 0 5px rgba(0,0,0,0.5);"></div>`;
+            const icon = L.divIcon({ html: markerHtml, className: '', iconSize: [12, 12] });
+            
+            const marker = L.marker([d.lat, d.lng], {icon: icon}).addTo(markersLayer);
+            marker.on('click', () => showSubscriberDetails(d, color));
+        }
+    });
+
+    document.getElementById('kpi-total').textContent = dataToProcess.length.toLocaleString();
+    document.getElementById('kpi-active').textContent = activeCount.toLocaleString();
+    document.getElementById('kpi-disc').textContent = discCount.toLocaleString();
+
+    const statusTable = document.getElementById('statusListTable');
+    statusTable.innerHTML = `
+        <tr><td><span class="st-dot" style="background:${STATUS_COLORS["نشط"]}"></span> نشط</td>
+            <td style="text-align:left"><span class="st-count" style="color:${STATUS_COLORS["نشط"]}">${stats["نشط"].toLocaleString()}</span></td></tr>
+        <tr><td><span class="st-dot" style="background:${STATUS_COLORS["نشط غير موثق"]}"></span> نشط غير موثق</td>
+            <td style="text-align:left"><span class="st-count" style="color:${STATUS_COLORS["نشط غير موثق"]}">${stats["نشط غير موثق"].toLocaleString()}</span></td></tr>
+        <tr><td><span class="st-dot" style="background:${STATUS_COLORS["مفصول غير موثق"]}"></span> مفصول غير موثق</td>
+            <td style="text-align:left"><span class="st-count" style="color:${STATUS_COLORS["مفصول غير موثق"]}">${stats["مفصول غير موثق"].toLocaleString()}</span></td></tr>
+        <tr><td><span class="st-dot" style="background:${STATUS_COLORS["مفصول ويوجد صرف"]}"></span> مفصول ويوجد صرف</td>
+            <td style="text-align:left"><span class="st-count" style="color:${STATUS_COLORS["مفصول ويوجد صرف"]}">${stats["مفصول ويوجد صرف"].toLocaleString()}</span></td></tr>
+        <tr><td><span class="st-dot" style="background:var(--dim)"></span> استهلاك صفري</td>
+            <td style="text-align:left"><span class="st-count" style="color:var(--brand-blue)">${stats["استهلاك صفري"].toLocaleString()}</span></td></tr>
+    `;
+
+    const listDiv = document.getElementById('sectorsList');
+    if (currentSector === 'all' && currentZoneType === 'all') {
+        listDiv.innerHTML = '';
+        for (const [secName, info] of Object.entries(sectors)) {
+            const coords = SECTOR_COORDS[secName] || [27.025, 49.620];
+            
+            // 🌟 استخدام القاموس العربي للترجمة
+            const distArab = DISTRICT_ARABIC[info.district] || info.district;
+            const secArab = SECTOR_ARABIC[secName] ? ` - ${SECTOR_ARABIC[secName]}` : '';
+            
+            // تصميم العلامة على الخريطة باللغة العربية
+            const labelIcon = L.divIcon({ 
+                html: `<div class="sector-label">
+                        <div class="sector-label-title">حي ${distArab}</div>
+                        <div class="sector-label-sub">${secArab.replace('- ', '')} (${secName})</div>
+                       </div>`, 
+                className: '', iconSize: [100, 40] 
+            });
+            L.marker(coords, {icon: labelIcon}).addTo(labelsLayer)
+             .on('click', () => focusSector(secName, coords[0], coords[1]));
+
+            // القائمة الجانبية باللغة العربية
+            const item = document.createElement('div');
+            item.className = 'sector-item';
+            item.innerHTML = `<span class="sector-name">حي ${distArab}${secArab} (${secName})</span><span class="sector-count">${info.count}</span>`;
+            item.onclick = () => focusSector(secName, coords[0], coords[1]);
+            listDiv.appendChild(item);
+        }
+    }
+}
+
+function setZoneFilter(val) { currentZoneType = val; processMapData(); }
+
+function focusSector(sectorName, lat, lng) {
+    currentSector = sectorName;
+    map.flyTo([lat, lng], 15, { animate: true, duration: 1.5 });
+    processMapData();
+}
+
+function resetView() {
+    currentSector = 'all';
+    currentZoneType = 'all';
+    document.querySelector('input[name="ztype"][value="all"]').checked = true;
+    map.flyTo([27.025, 49.620], 12);
+    
+    document.getElementById('closeDetailBtn').style.display = 'none';
+    document.getElementById('subscriberDetails').innerHTML = `<div class="empty-state"><div style="font-size: 40px; margin-bottom: 10px;">📍</div>اضغط على أي دبوس في الخريطة<br>لعرض تفاصيل العداد والمشترك هنا.</div>`;
+    
+    processMapData();
+}
+
+function showSubscriberDetails(data, color) {
+    // 🌟 ترجمة اسم الحي والمحلة في بطاقة المشترك
+    const distArab = DISTRICT_ARABIC[data.district] || data.district;
+    const secArab = SECTOR_ARABIC[data.sector] || data.sector;
+    const formatTitle = `حي ${distArab} ← محلة ${secArab} (${data.sector})`;
+    
+    const zeroColor = data.zero_consumption === 'نعم' ? 'var(--red)' : 'var(--brand-blue)';
+    const discColor = data.disc_consumption === 'نعم' ? 'var(--red)' : 'var(--brand-blue)';
+    
+    document.getElementById('closeDetailBtn').style.display = 'block';
+
+    const html = `
+        <div style="font-size:12px; color:var(--brand-blue); font-weight:900; margin-bottom:12px;">${formatTitle}</div>
+        
+        <div class="detail-card">
+            <div class="d-row"><span class="d-label">العنوان / الموقع</span><span class="d-val">${data.address}</span></div>
+            <div class="d-row"><span class="d-label">رقم الحساب (Contract Account)</span><span class="d-val">${data.contract_account || 'N/A'}</span></div>
+            <div class="d-row"><span class="d-label">تصنيف الحساب (Account Det.)</span><span class="d-val">${data.account_det || 'N/A'}</span></div>
+            <div class="d-row"><span class="d-label">رقم الجوال</span><span class="d-val" style="color:var(--brand-orange)">${data.phone || 'N/A'}</span></div>
+        </div>
+        
+        <div class="detail-card">
+            <div class="d-row"><span class="d-label">حالة العداد (Meter Status)</span><span class="status-badge" style="background:${color}">${data.status}</span></div>
+            <div class="d-row" style="margin-top:10px;"><span class="d-label">متوسط الاستهلاك (12 شهر)</span><span class="d-val">${data.average_12m || 0}</span></div>
+            <div class="d-row"><span class="d-label">استهلاك صفري (Zero Consumption)</span><span class="d-val" style="color:${zeroColor}; font-weight:900;">${data.zero_consumption || 'لا'}</span></div>
+            <div class="d-row"><span class="d-label" style="color:var(--red);">مفصول ويوجد استهلاك</span><span class="d-val" style="color:${discColor}; font-weight:900;">${data.disc_consumption || 'لا'}</span></div>
+        </div>
+
+        <div class="detail-card">
+            <div class="d-row"><span class="d-label">توثيق العداد (Authenticated)</span><span class="d-val">${data.authenticated || 'غير متوفر'}</span></div>
+        </div>
+    `;
+    document.getElementById('subscriberDetails').innerHTML = html;
+}
+
+document.getElementById("searchInput").addEventListener("keydown", async function(e) {
+  if (e.key === 'Enter') {
+      const q = this.value.trim();
+      if (!q) return;
+      try {
+          const res = await fetch(`${API}/search/${q}`);
+          const data = await res.json();
+          if(data.error) {
+              alert("لم يتم العثور على المشترك.");
+          } else {
+              currentSector = data.sector;
+              map.flyTo([data.lat, data.lng], 18, { animate: true, duration: 1.5 });
+              processMapData();
+              const color = STATUS_COLORS[data.status] || "#718096";
+              showSubscriberDetails(data, color);
+          }
+      } catch(err) {
+          alert("تأكد من تشغيل السيرفر (server.py).");
+      }
+  }
+});
+
+function exportData() { window.location.href = `${API}/export?sector=${currentSector}`; }
+
+fetchData();
+</script>
+</body>
+</html>
